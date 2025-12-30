@@ -1,0 +1,26 @@
+# Binaries
+slack-monitor
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test coverage
+*.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Config files (contain secrets)
+config.json
+state.json
+*.log
