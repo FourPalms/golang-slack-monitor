@@ -730,17 +730,20 @@ slack-monitor/
 **Refactoring Steps**:
 
 **Step 22a: Create package structure and move domain types**
-- [ ] Create directory structure: `slack/`, `notification/`, `storage/`, `cmd/slack-monitor/`
-- [ ] Create `monitor.go` at root with core domain types:
+- [x] Create directory structure: `slack/`, `notification/`, `storage/`, `cmd/slack-monitor/`
+- [x] Create `monitor.go` at root with core domain types:
   - `Message` - Represents a Slack message
   - `Conversation` - Represents a DM conversation
   - `State` - Represents monitoring state (last checked timestamps)
-  - `Monitor` interface - Core monitoring operations
+  - `User` - Represents a Slack user
+  - `Config` - Application configuration
+  - `Monitor` struct - Core monitoring logic with Run() method
   - `SlackClient` interface - Abstract Slack API operations
   - `Notifier` interface - Abstract notification operations
   - `StateStore` interface - Abstract state persistence
-- [ ] Define interfaces first, implementations will reference them
-- [ ] Package name: `monitor` (not `main`)
+- [x] Define interfaces first, implementations will reference them
+- [x] Package name: `monitor` (not `main`)
+- [x] Implement core monitoring logic in `Monitor.Run()` method
 
 **Step 22b: Extract Slack client to `slack/` package**
 - [ ] Move Slack API client code to `slack/client.go`:
