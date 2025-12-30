@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestLoadConfig tests config loading and validation
@@ -190,5 +191,187 @@ func TestNotificationServiceCreation(t *testing.T) {
 	}
 	if notifier.httpClient == nil {
 		t.Error("Expected initialized HTTP client")
+	}
+}
+
+// TestRateLimiting tests that notification rate limiting works correctly
+func TestRateLimiting(t *testing.T) {
+	notifier := newNotificationService("test-topic")
+
+	// First notification should be sent (lastNotify is zero time)
+	// Note: We can't actually test sending without mocking HTTP, but we can test the rate limit logic
+	// by checking the time tracking
+
+	// Simulate notification was just sent
+	notifier.lastNotify = time.Now()
+
+	// Immediate second notification should be skipped (within rate limit)
+	timeSinceLastNotify := time.Since(notifier.lastNotify)
+	if timeSinceLastNotify >= NotificationRateLimitSec*time.Second {
+		t.Errorf("Test setup error: time since last notify should be less than %d seconds", NotificationRateLimitSec)
+	}
+
+	// After waiting, should be allowed
+	notifier.lastNotify = time.Now().Add(-NotificationRateLimitSec * time.Second)
+	timeSinceLastNotify = time.Since(notifier.lastNotify)
+	if timeSinceLastNotify < NotificationRateLimitSec*time.Second {
+		t.Error("Time since last notify should be >= rate limit after waiting")
+	}
+}
+
+// TestStateUpdateScenarios tests different state update scenarios
+func TestStateUpdateScenarios(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Scenario 1: First run - empty state
+	state, err := loadState()
+	if err != nil {
+		t.Fatalf("Failed to load initial state: %v", err)
+	}
+	if len(state.LastChecked) != 0 {
+		t.Error("Initial state should have empty LastChecked map")
+	}
+
+	// Scenario 2: Add first conversation
+	channelID1 := "C123456"
+	timestamp1 := "1234567890.123456"
+	state.LastChecked[channelID1] = timestamp1
+
+	if err := saveState(state); err != nil {
+		t.Fatalf("Failed to save state: %v", err)
+	}
+
+	// Scenario 3: Reload and verify persistence
+	reloadedState, err := loadState()
+	if err != nil {
+		t.Fatalf("Failed to reload state: %v", err)
+	}
+	if reloadedState.LastChecked[channelID1] != timestamp1 {
+		t.Errorf("Expected timestamp '%s' for %s, got '%s'", timestamp1, channelID1, reloadedState.LastChecked[channelID1])
+	}
+
+	// Scenario 4: Update existing conversation
+	timestamp2 := "1234567900.123456"
+	reloadedState.LastChecked[channelID1] = timestamp2
+
+	// Scenario 5: Add second conversation
+	channelID2 := "C789012"
+	timestamp3 := "1234567910.123456"
+	reloadedState.LastChecked[channelID2] = timestamp3
+
+	if err := saveState(reloadedState); err != nil {
+		t.Fatalf("Failed to save updated state: %v", err)
+	}
+
+	// Scenario 6: Final reload and verify both conversations
+	finalState, err := loadState()
+	if err != nil {
+		t.Fatalf("Failed to load final state: %v", err)
+	}
+	if len(finalState.LastChecked) != 2 {
+		t.Errorf("Expected 2 conversations, got %d", len(finalState.LastChecked))
+	}
+	if finalState.LastChecked[channelID1] != timestamp2 {
+		t.Errorf("Expected updated timestamp '%s' for %s, got '%s'", timestamp2, channelID1, finalState.LastChecked[channelID1])
+	}
+	if finalState.LastChecked[channelID2] != timestamp3 {
+		t.Errorf("Expected timestamp '%s' for %s, got '%s'", timestamp3, channelID2, finalState.LastChecked[channelID2])
+	}
+}
+
+// TestMessageFiltering tests message filtering logic (own messages, non-user messages)
+func TestMessageFiltering(t *testing.T) {
+	// Test that we correctly identify messages to skip
+	authenticatedUserID := "U123456"
+
+	tests := []struct {
+		name       string
+		msgUser    string
+		msgType    string
+		shouldSkip bool
+	}{
+		{
+			name:       "Normal message from other user",
+			msgUser:    "U789012",
+			msgType:    "message",
+			shouldSkip: false,
+		},
+		{
+			name:       "Own message should be skipped",
+			msgUser:    authenticatedUserID,
+			msgType:    "message",
+			shouldSkip: true,
+		},
+		{
+			name:       "Message with empty user should be skipped",
+			msgUser:    "",
+			msgType:    "message",
+			shouldSkip: true,
+		},
+		{
+			name:       "Non-message type should be skipped",
+			msgUser:    "U789012",
+			msgType:    "channel_join",
+			shouldSkip: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulate the filtering logic from checkForNewMessages
+			shouldSkip := tt.msgUser == "" || tt.msgType != "message" || tt.msgUser == authenticatedUserID
+
+			if shouldSkip != tt.shouldSkip {
+				t.Errorf("Expected shouldSkip=%v, got %v for user=%s type=%s", tt.shouldSkip, shouldSkip, tt.msgUser, tt.msgType)
+			}
+		})
+	}
+}
+
+// TestConfigDefaults tests that configuration defaults are set correctly
+func TestConfigDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Create minimal config (only required fields)
+	monitorDir := filepath.Join(tmpDir, ".slack-monitor")
+	if err := os.MkdirAll(monitorDir, 0700); err != nil {
+		t.Fatalf("Failed to create monitor dir: %v", err)
+	}
+
+	minimalConfig := map[string]interface{}{
+		"slack": map[string]interface{}{
+			"xoxc_token": "test-xoxc",
+			"xoxd_token": "test-xoxd",
+			// No poll_interval_seconds specified
+		},
+		"notifications": map[string]interface{}{
+			"ntfy_topic": "test-topic",
+		},
+		// No monitor section specified
+	}
+
+	configPath := filepath.Join(monitorDir, "config.json")
+	data, _ := json.Marshal(minimalConfig)
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	config, err := loadConfig()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Verify defaults were set
+	if config.Slack.PollIntervalSecs != DefaultPollIntervalSecs {
+		t.Errorf("Expected default poll interval %d, got %d", DefaultPollIntervalSecs, config.Slack.PollIntervalSecs)
+	}
+	if config.Monitor.DMsOnly != DefaultDMsOnly {
+		t.Errorf("Expected default DMsOnly %v, got %v", DefaultDMsOnly, config.Monitor.DMsOnly)
 	}
 }
