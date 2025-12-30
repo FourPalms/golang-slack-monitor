@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -115,6 +116,7 @@ func (m *Monitor) Run(ctx context.Context) error {
 	}
 
 	pollInterval := time.Duration(m.config.Slack.PollIntervalSecs) * time.Second
+	log.Println("Starting monitoring...")
 
 	// Use check-then-wait pattern to prevent overlapping cycles
 	for {
@@ -126,14 +128,15 @@ func (m *Monitor) Run(ctx context.Context) error {
 		}
 
 		// Run check cycle
+		log.Println("Checking for new messages...")
 		cycleStart := time.Now()
 		if err := m.checkAllConversations(ctx, state); err != nil {
 			// Log error but continue monitoring
-			_ = err
+			log.Printf("Error checking conversations: %v", err)
 		}
 		cycleDuration := time.Since(cycleStart)
 
-		_ = cycleDuration // Will be logged
+		log.Printf("Check cycle completed in %dms, waiting %ds before next cycle", cycleDuration.Milliseconds(), int(pollInterval.Seconds()))
 
 		// Wait for configured interval AFTER check completes
 		select {
@@ -153,6 +156,8 @@ func (m *Monitor) checkAllConversations(ctx context.Context, state *State) error
 		return err
 	}
 
+	log.Printf("Checking %d DM conversation(s)", len(conversations))
+
 	// Check each conversation for new messages
 	for _, conv := range conversations {
 		// Check for cancellation before each conversation
@@ -170,7 +175,11 @@ func (m *Monitor) checkAllConversations(ctx context.Context, state *State) error
 	}
 
 	// Save state after each check cycle
-	return m.stateStore.Save(state)
+	if err := m.stateStore.Save(state); err != nil {
+		return err
+	}
+	log.Printf("State saved (%d conversations tracked)", len(state.LastChecked))
+	return nil
 }
 
 // checkConversation checks a single conversation for new messages
