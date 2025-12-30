@@ -746,19 +746,21 @@ slack-monitor/
 - [x] Implement core monitoring logic in `Monitor.Run()` method
 
 **Step 22b: Extract Slack client to `slack/` package**
-- [ ] Move Slack API client code to `slack/client.go`:
+- [x] Move Slack API client code to `slack/client.go`:
   - `Client` struct (implements `monitor.SlackClient` interface)
-  - `makeSlackRequest()` - HTTP request handling
-  - `getConversationHistory()` - Fetch messages
-  - `getUserInfo()` - Get user details
-  - `testAuth()` - Authentication validation
-  - `listConversations()` - List DM conversations
-- [ ] Move Slack-specific types to `slack/types.go`:
-  - `SlackMessage`, `SlackUser`, `SlackConversation`
-  - API response types (SlackHistoryResponse, etc.)
-- [ ] Move authentication logic to `slack/auth.go`
-- [ ] Client depends on `monitor` package interfaces, not vice versa
-- [ ] Update tests to use new package structure
+  - `makeRequest()` - HTTP request handling (stealth mode auth)
+  - `GetConversationHistory()` - Fetch messages
+  - `GetUserInfo()` - Get user details
+  - `TestAuth()` - Authentication validation
+  - `GetDMConversations()` - List DM conversations
+  - `GetAuthenticatedUserID()` - Return authenticated user ID
+- [x] Move Slack-specific types to `slack/types.go`:
+  - API response types: conversationResponse, messageResponse, userResponse
+  - conversationsListResponse, conversationsHistoryResponse, usersInfoResponse
+  - authTestResponse
+  - All types are internal (lowercase) - external code uses monitor types
+- [x] Client depends on `monitor` package types (Conversation, Message, User)
+- [x] Converts API responses to domain types in each method
 
 **Step 22c: Extract notification service to `notification/` package**
 - [ ] Move notification code to `notification/service.go`:
