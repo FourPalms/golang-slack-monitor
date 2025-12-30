@@ -783,14 +783,15 @@ slack-monitor/
 - [x] Clean implementation (87 lines)
 
 **Step 22e: Create thin main package**
-- [ ] Create `cmd/slack-monitor/main.go`:
-  - Config loading only
-  - Instantiate implementations: `slack.Client`, `notification.Service`, `storage.FileStore`
-  - Wire dependencies together
-  - Run monitoring loop
-  - Signal handling
-- [ ] Move monitoring loop logic to `monitor.go` as `Run()` function
-- [ ] Main just calls `monitor.Run()` with implementations
+- [x] Create `cmd/slack-monitor/main.go`:
+  - Config loading only (loadConfig function)
+  - Instantiate implementations: `slack.NewClient()`, `notification.NewService()`, `storage.NewFileStore()`
+  - Wire dependencies: `monitor.NewMonitor(slackClient, notifier, stateStore, config)`
+  - Signal handling (SIGINT, SIGTERM)
+  - Context for graceful shutdown
+  - Call `monitor.Run(ctx)` to start monitoring
+- [x] Monitoring loop logic already in `monitor.go` as `Run()` method
+- [x] Main is thin (109 lines) - just wiring and config loading
 
 **Step 22f: Update build system**
 - [ ] Update Makefile to build from `cmd/slack-monitor/`
