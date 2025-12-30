@@ -773,13 +773,14 @@ slack-monitor/
 - [x] Clean, focused implementation (66 lines)
 
 **Step 22d: Extract state storage to `storage/` package**
-- [ ] Move state persistence to `storage/state.go`:
+- [x] Move state persistence to `storage/state.go`:
   - `FileStore` struct (implements `monitor.StateStore` interface)
-  - `loadState()` - Load from JSON file
-  - `saveState()` - Save to JSON file
-  - File path management
-- [ ] Store depends on `monitor.State` type
-- [ ] Update tests
+  - `NewFileStore()` - Constructor, determines state file path (~/.slack-monitor/state.json)
+  - `Load()` - Load from JSON file, creates empty state if file doesn't exist
+  - `Save()` - Atomic save to JSON file (write temp file, then rename)
+  - Directory creation, file permissions (0700 for dir, 0600 for file)
+- [x] Store depends on `monitor.State` type
+- [x] Clean implementation (87 lines)
 
 **Step 22e: Create thin main package**
 - [ ] Create `cmd/slack-monitor/main.go`:
