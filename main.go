@@ -537,7 +537,7 @@ func monitorLoop(ctx context.Context, config *Config, state *State) {
 	defer ticker.Stop()
 
 	// Run first check immediately
-	checkAllConversations(slackClient, notifier, state)
+	checkAllConversations(ctx, slackClient, notifier, state)
 
 	for {
 		select {
@@ -545,13 +545,13 @@ func monitorLoop(ctx context.Context, config *Config, state *State) {
 			log.Println("Monitoring loop stopping...")
 			return
 		case <-ticker.C:
-			checkAllConversations(slackClient, notifier, state)
+			checkAllConversations(ctx, slackClient, notifier, state)
 		}
 	}
 }
 
 // checkAllConversations checks all DM conversations for new messages
-func checkAllConversations(slackClient *SlackClient, notifier *NotificationService, state *State) {
+func checkAllConversations(ctx context.Context, slackClient *SlackClient, notifier *NotificationService, state *State) {
 	log.Println("Checking for new messages...")
 
 	// Get all DM conversations
@@ -565,6 +565,15 @@ func checkAllConversations(slackClient *SlackClient, notifier *NotificationServi
 
 	// Check each conversation for new messages
 	for _, conv := range conversations {
+		// Check for cancellation before each conversation
+		select {
+		case <-ctx.Done():
+			log.Println("Cancellation detected, stopping conversation checks")
+			return
+		default:
+			// Continue processing
+		}
+
 		if err := checkForNewMessages(slackClient, notifier, state, conv.ID, conv.User); err != nil {
 			log.Printf("Error checking conversation %s: %v", conv.ID, err)
 			continue

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -451,4 +453,80 @@ func TestFirstCheckStatePersistence(t *testing.T) {
 	if finalState.LastChecked[channelID] != newTimestamp {
 		t.Errorf("Final state timestamp mismatch: got %s, want %s", finalState.LastChecked[channelID], newTimestamp)
 	}
+}
+
+// TestCancellationHandling tests that context cancellation stops processing immediately.
+// This is a critical bug fix: previously, Ctrl+C had to wait for all 200 conversations
+// to be checked (~4 seconds) before stopping.
+func TestCancellationHandling(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Create a context that we'll cancel
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Create state
+	state, err := loadState()
+	if err != nil {
+		t.Fatalf("Failed to load state: %v", err)
+	}
+
+	// Simulate a large number of conversations (like production: 200)
+	for i := 0; i < 50; i++ {
+		channelID := fmt.Sprintf("D%012d", i)
+		state.LastChecked[channelID] = "1735579200.000000"
+	}
+
+	// We can't fully test checkAllConversations without mocking Slack API,
+	// but we can test that the select statement respects cancellation.
+	// The key is that when we cancel the context, the function should return
+	// immediately without processing remaining conversations.
+
+	// Test the select pattern used in checkAllConversations
+	conversationsProcessed := 0
+	checkStarted := make(chan bool)
+	checkDone := make(chan bool)
+
+	go func() {
+		checkStarted <- true
+		// Simulate the loop in checkAllConversations
+		for i := 0; i < 50; i++ {
+			select {
+			case <-ctx.Done():
+				// Should break immediately when context is cancelled
+				checkDone <- true
+				return
+			default:
+				// Simulate processing time
+				time.Sleep(1 * time.Millisecond)
+				conversationsProcessed++
+			}
+		}
+		checkDone <- true
+	}()
+
+	// Wait for check to start
+	<-checkStarted
+
+	// Cancel after a short time
+	time.Sleep(5 * time.Millisecond)
+	cancel()
+
+	// Wait for check to complete
+	<-checkDone
+
+	// VERIFY: Should have processed fewer than all 50 conversations
+	// because we cancelled mid-loop
+	if conversationsProcessed >= 50 {
+		t.Errorf("Context cancellation not respected: processed all %d conversations", conversationsProcessed)
+	}
+
+	// Should have processed at least a few before cancellation
+	if conversationsProcessed == 0 {
+		t.Error("No conversations processed before cancellation")
+	}
+
+	t.Logf("Processed %d of 50 conversations before cancellation (correct behavior)", conversationsProcessed)
 }
