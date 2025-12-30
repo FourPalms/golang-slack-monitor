@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jeremyhunt/slack-monitor"
+	"github.com/FourPalms/golang-slack-monitor"
 )
 
 // FileStore implements the monitor.StateStore interface using JSON files

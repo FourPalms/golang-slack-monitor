@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/jeremyhunt/slack-monitor"
-	"github.com/jeremyhunt/slack-monitor/notification"
-	"github.com/jeremyhunt/slack-monitor/slack"
-	"github.com/jeremyhunt/slack-monitor/storage"
+	"github.com/FourPalms/golang-slack-monitor"
+	"github.com/FourPalms/golang-slack-monitor/notification"
+	"github.com/FourPalms/golang-slack-monitor/slack"
+	"github.com/FourPalms/golang-slack-monitor/storage"
 )
 
 const (

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jeremyhunt/slack-monitor"
+	"github.com/FourPalms/golang-slack-monitor"
 )
 
 const (
