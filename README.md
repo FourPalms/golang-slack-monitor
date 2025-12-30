@@ -18,6 +18,32 @@ A lightweight Go application that monitors your Slack DMs and sends phone notifi
 - A Slack workspace account
 - ntfy.sh app on your phone (free, no account needed)
 
+## Quick Start
+
+For experienced developers:
+
+1. **Clone and build**:
+   ```bash
+   git clone git@github.com:FourPalms/golang-slack-monitor.git
+   cd golang-slack-monitor
+   make build
+   ```
+
+2. **Extract Slack tokens** (see Step 2 below for detailed instructions)
+
+3. **Create config** (see `config.example.json` for reference):
+   ```bash
+   mkdir -p ~/.slack-monitor
+   cp config.example.json ~/.slack-monitor/config.json
+   # Edit with your tokens and ntfy topic
+   chmod 600 ~/.slack-monitor/config.json
+   ```
+
+4. **Run**:
+   ```bash
+   ./slack-monitor
+   ```
+
 ## Installation
 
 ### Build from source
@@ -52,26 +78,38 @@ export PATH="$HOME/bin:$PATH"
 
 ### Step 2: Extract Slack Tokens
 
-You need two tokens from your Slack browser session:
+You need two tokens from your Slack browser session. This app uses "stealth mode" authentication (same method as slack-mcp-server).
+
+**Important**: Both tokens work together - you need BOTH for authentication to work.
 
 1. **Open Slack in your browser**: https://app.slack.com/client/YOUR_WORKSPACE
-2. **Open DevTools**: Press `F12` (Windows/Linux) or `Cmd+Option+I` (Mac)
-3. **Go to Application/Storage tab** → Cookies → https://app.slack.com
-4. **Find the `d` cookie**:
-   - Name: `d`
-   - Value: This is your **xoxc token** (starts with `xoxc-`)
-   - Copy the entire value
 
-5. **Go to Network tab**:
-   - Filter by "api" or "slack.com"
-   - Look for any request to `slack.com/api/`
-   - Click on a request and go to Headers
-   - Find `Authorization: Bearer xoxd-...`
-   - Copy the **xoxd token** (everything after "Bearer ")
+2. **Open DevTools**: Press `F12` (Windows/Linux) or `Cmd+Option+I` (Mac)
+
+3. **Extract xoxd token** (Cookie "d"):
+   - Go to **Application** (Chrome) or **Storage** (Firefox) tab
+   - Navigate to Cookies → https://app.slack.com
+   - Find the cookie named **`d`**
+   - Copy its **Value** - this is your **xoxd token** (starts with `xoxd-`)
+   - ⚠️ **Note**: The cookie is named "d" but contains the "xoxd" token (not "xoxc")
+
+4. **Extract xoxc token** (API requests):
+   - Go to **Network** tab in DevTools
+   - Refresh the Slack page or click around to generate some API traffic
+   - Filter by "api" or search for `slack.com/api/`
+   - Click on any API request (e.g., `conversations.list`, `users.info`)
+   - Look at the **Request URL** or **Query String Parameters**
+   - Find the `token` parameter - this is your **xoxc token** (starts with `xoxc-`)
+   - Copy the entire token value
+
+**Why both tokens?**
+- **xoxd token**: Goes in the "d" cookie for session authentication
+- **xoxc token**: Goes in API request parameters for user authentication
+- The app uses both together to authenticate as your user without creating a Slack app
 
 ### Step 3: Create Configuration File
 
-Create `~/.slack-monitor/config.json`:
+Create `~/.slack-monitor/config.json` (see `config.example.json` in the repo for reference):
 
 ```bash
 mkdir -p ~/.slack-monitor
@@ -80,7 +118,6 @@ cat > ~/.slack-monitor/config.json << 'EOF'
   "slack": {
     "xoxc_token": "xoxc-PASTE-YOUR-XOXC-TOKEN-HERE",
     "xoxd_token": "xoxd-PASTE-YOUR-XOXD-TOKEN-HERE",
-    "workspace_id": "T02BJJRF2",
     "poll_interval_seconds": 60
   },
   "notifications": {
@@ -92,6 +129,11 @@ cat > ~/.slack-monitor/config.json << 'EOF'
 }
 EOF
 ```
+
+**Replace the placeholder values:**
+- `xoxc-PASTE-YOUR-XOXC-TOKEN-HERE` → Your xoxc token from Step 2.4
+- `xoxd-PASTE-YOUR-XOXD-TOKEN-HERE` → Your xoxd token from Step 2.3
+- `your-topic-name-here` → Your ntfy.sh topic from Step 1
 
 **Set secure permissions:**
 ```bash
@@ -189,12 +231,11 @@ launchctl unload ~/Library/LaunchAgents/com.user.slack-monitor.plist
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `slack.xoxc_token` | string | Yes | - | Slack cookie token (starts with `xoxc-`) |
-| `slack.xoxd_token` | string | Yes | - | Slack authorization token (starts with `xoxd-`) |
-| `slack.workspace_id` | string | No | - | Your Slack workspace ID (optional) |
-| `slack.poll_interval_seconds` | int | No | 60 | How often to check for new messages |
-| `notifications.ntfy_topic` | string | Yes | - | Your ntfy.sh topic name |
-| `monitor.dms_only` | bool | No | true | Monitor only DMs (future: channels/mentions) |
+| `slack.xoxc_token` | string | **Yes** | - | Slack user token (starts with `xoxc-`). Found in API request `token` parameter. |
+| `slack.xoxd_token` | string | **Yes** | - | Slack session token (starts with `xoxd-`). Found in cookie "d". |
+| `slack.poll_interval_seconds` | int | No | 60 | How often to check for new messages (in seconds). Minimum: 30, recommended: 60-300. |
+| `notifications.ntfy_topic` | string | **Yes** | - | Your ntfy.sh topic name. Use a random suffix for security. |
+| `monitor.dms_only` | bool | No | true | Monitor only DMs. Currently only `true` is supported. |
 
 ### State file: `~/.slack-monitor/state.json`
 
