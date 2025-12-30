@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -15,6 +14,16 @@ import (
 	"strings"
 	"syscall"
 	"time"
+)
+
+// Constants for configurable behavior
+const (
+	DefaultPollIntervalSecs = 60
+	MaxMessagePreviewLength = 100
+	NotificationRateLimitSec = 2
+	SlackAPIConversationLimit = 200
+	SlackAPIMessageLimit = 100
+	DefaultDMsOnly = true
 )
 
 // Config represents the application configuration
@@ -80,6 +89,17 @@ type SlackUserResponse struct {
 	Error string    `json:"error"`
 }
 
+// SlackAuthResponse represents the API response from auth.test
+type SlackAuthResponse struct {
+	OK     bool   `json:"ok"`
+	URL    string `json:"url"`
+	Team   string `json:"team"`
+	User   string `json:"user"`
+	TeamID string `json:"team_id"`
+	UserID string `json:"user_id"`
+	Error  string `json:"error"`
+}
+
 // getMonitorDir returns the .slack-monitor directory path
 func getMonitorDir() string {
 	home, err := os.UserHomeDir()
@@ -126,10 +146,10 @@ func loadConfig() (*Config, error) {
 
 	// Set defaults
 	if config.Slack.PollIntervalSecs == 0 {
-		config.Slack.PollIntervalSecs = 60
+		config.Slack.PollIntervalSecs = DefaultPollIntervalSecs
 	}
 	if config.Monitor.DMsOnly == false {
-		config.Monitor.DMsOnly = true // Default to DMs only
+		config.Monitor.DMsOnly = DefaultDMsOnly
 	}
 
 	return &config, nil
@@ -184,7 +204,7 @@ func saveState(state *State) error {
 
 	// Write to temporary file first, then rename (atomic)
 	tempPath := statePath + ".tmp"
-	if err := ioutil.WriteFile(tempPath, data, 0600); err != nil {
+	if err := os.WriteFile(tempPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write temporary state file: %w", err)
 	}
 
@@ -198,9 +218,10 @@ func saveState(state *State) error {
 
 // SlackClient handles API calls to Slack
 type SlackClient struct {
-	xoxcToken  string
-	xoxdToken  string
-	httpClient *http.Client
+	xoxcToken     string
+	xoxdToken     string
+	httpClient    *http.Client
+	authenticatedUserID string // ID of the authenticated user (to filter own messages)
 }
 
 // newSlackClient creates a new Slack API client
@@ -262,7 +283,7 @@ func (c *SlackClient) getDMConversations() ([]SlackConversation, error) {
 	params := url.Values{}
 	params.Set("types", "im")
 	params.Set("exclude_archived", "true")
-	params.Set("limit", "200")
+	params.Set("limit", fmt.Sprintf("%d", SlackAPIConversationLimit))
 
 	body, err := c.makeSlackRequest("GET", "conversations.list", params)
 	if err != nil {
@@ -288,7 +309,7 @@ func (c *SlackClient) getConversationHistory(channelID, oldestTS string) ([]Slac
 	if oldestTS != "" {
 		params.Set("oldest", oldestTS)
 	}
-	params.Set("limit", "100")
+	params.Set("limit", fmt.Sprintf("%d", SlackAPIMessageLimit))
 
 	body, err := c.makeSlackRequest("GET", "conversations.history", params)
 	if err != nil {
@@ -305,6 +326,26 @@ func (c *SlackClient) getConversationHistory(channelID, oldestTS string) ([]Slac
 	}
 
 	return response.Messages, nil
+}
+
+// testAuth validates the authentication tokens and returns the authenticated user ID
+func (c *SlackClient) testAuth() (string, error) {
+	body, err := c.makeSlackRequest("GET", "auth.test", url.Values{})
+	if err != nil {
+		return "", err
+	}
+
+	var response SlackAuthResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("failed to parse auth response: %w", err)
+	}
+
+	if !response.OK {
+		return "", fmt.Errorf("Slack authentication failed: %s", response.Error)
+	}
+
+	log.Printf("Authenticated as %s (%s) in workspace %s", response.User, response.UserID, response.Team)
+	return response.UserID, nil
 }
 
 // getUserInfo fetches information about a user
@@ -349,8 +390,8 @@ func newNotificationService(ntfyTopic string) *NotificationService {
 
 // sendNotification sends a notification to ntfy.sh
 func (n *NotificationService) sendNotification(message string) error {
-	// Rate limiting: don't send more than one notification per 2 seconds
-	if time.Since(n.lastNotify) < 2*time.Second {
+	// Rate limiting: prevent notification spam
+	if time.Since(n.lastNotify) < NotificationRateLimitSec*time.Second {
 		log.Println("Rate limiting: skipping notification")
 		return nil
 	}
@@ -383,9 +424,9 @@ func (n *NotificationService) sendNotification(message string) error {
 
 // formatMessage formats a Slack message for notification
 func formatMessage(userName, messageText string) string {
-	// Truncate message to 100 chars
-	if len(messageText) > 100 {
-		messageText = messageText[:97] + "..."
+	// Truncate message for mobile display
+	if len(messageText) > MaxMessagePreviewLength {
+		messageText = messageText[:MaxMessagePreviewLength-3] + "..."
 	}
 	return fmt.Sprintf("DM from %s: %s", userName, messageText)
 }
@@ -403,7 +444,7 @@ func checkForNewMessages(slackClient *SlackClient, notifier *NotificationService
 	// Fetch messages since last check
 	messages, err := slackClient.getConversationHistory(channelID, lastChecked)
 	if err != nil {
-		return fmt.Errorf("failed to get conversation history: %w", err)
+		return fmt.Errorf("failed to get conversation history for %s: %w", channelID, err)
 	}
 
 	// Process messages in reverse order (oldest first)
@@ -411,8 +452,8 @@ func checkForNewMessages(slackClient *SlackClient, notifier *NotificationService
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
 
-		// Skip our own messages (user ID would need to be tracked, for now skip non-user messages)
-		if msg.User == "" || msg.Type != "message" {
+		// Skip non-user messages and our own messages
+		if msg.User == "" || msg.Type != "message" || msg.User == slackClient.authenticatedUserID {
 			continue
 		}
 
@@ -456,6 +497,14 @@ func monitorLoop(ctx context.Context, config *Config, state *State) {
 	log.Println("Starting monitoring loop...")
 
 	slackClient := newSlackClient(config)
+
+	// Validate authentication and get authenticated user ID
+	userID, err := slackClient.testAuth()
+	if err != nil {
+		log.Fatalf("Authentication failed: %v", err)
+	}
+	slackClient.authenticatedUserID = userID
+
 	notifier := newNotificationService(config.Notifications.NtfyTopic)
 
 	ticker := time.NewTicker(time.Duration(config.Slack.PollIntervalSecs) * time.Second)

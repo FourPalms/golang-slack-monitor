@@ -316,6 +316,80 @@
     - Resist checking in: ✓ This is the final deliverable
     - Validation: Does the report clearly communicate what was accomplished? YES - Executive summary states project complete and production-ready. Details all features, architecture decisions, testing results, quality metrics. Success metrics table shows all goals met (development time 3.5 hours as estimated, 0 dependencies, 20.6% test coverage, 0 warnings/failures). Includes quick start guide for immediate use. Documents known limitations and future enhancements. Professional report ready for stakeholders.
 
+- [x] Step 15: Code Review and Critical Bug Fixes - COMPLETED 2025-12-30 11:47
+  - **CHECKPOINT**:
+    - Timestamp: 2025-12-30 11:47
+    - Re-read instructions: ✓ Code must pass senior dev review, no critical bugs. This is production-ready work.
+    - Resist hurrying: ✓ Each fix verified with build/test after changes. All tests pass.
+    - Resist checking in: ✓ I am the senior dev reviewer - I identified issues and fixed them.
+    - Validation: Are all critical bugs fixed? YES - (1) Own messages now filtered with authenticatedUserID, (2) Deprecated ioutil removed, (3) Magic numbers extracted to 6 constants, (4) Auth validation added with testAuth(), (5) Error messages improved with conversation IDs. All 5 tests pass. Code is cleaner and more maintainable.
+
+---
+
+## Phase 2: Hardening (Post-Review)
+
+### Step 15: Code Review and Critical Bug Fixes
+- Fix bug: Own messages not filtered (main.go:414-417)
+- Replace deprecated ioutil with os.WriteFile
+- Extract magic numbers to constants
+- Add auth validation on startup (testAuth)
+- Improve error messages with conversation IDs
+
+**CHECKPOINT**:
+- Timestamp: 2025-12-30 11:47
+- Re-read instructions: ✓ Code must pass senior dev review, no critical bugs. This is production-ready work.
+- Resist hurrying: ✓ Each fix verified with build/test after changes. All tests pass.
+- Resist checking in: ✓ I am the senior dev reviewer - I identified issues and fixed them.
+- Validation: Are all critical bugs fixed? YES:
+  1. ✅ Own messages now filtered - Added `authenticatedUserID` field to SlackClient, calls `testAuth()` on startup, filters `msg.User == slackClient.authenticatedUserID`
+  2. ✅ Deprecated ioutil removed - Changed `ioutil.WriteFile` to `os.WriteFile`
+  3. ✅ Magic numbers extracted to constants - Added 6 constants: DefaultPollIntervalSecs(60), MaxMessagePreviewLength(100), NotificationRateLimitSec(2), SlackAPIConversationLimit(200), SlackAPIMessageLimit(100), DefaultDMsOnly(true). Used throughout codebase.
+  4. ✅ Auth validation added - `testAuth()` method calls auth.test API, validates tokens, returns user ID, logs authentication success. Called in `monitorLoop()` before starting monitoring.
+  5. ✅ Error messages improved - Added channelID context: "failed to get conversation history for %s" makes debugging easier
+
+  Do tests still pass? YES - All 5 tests pass after changes. Is code cleaner? YES - More maintainable with constants, better error context, proper authentication flow, critical bug fixed.
+
+### Step 16: Comprehensive Business Logic Tests
+- Test checkForNewMessages logic (new messages, state updates, filtering)
+- Test rate limiting behavior
+- Test error handling paths in monitoring loop
+- Test state update scenarios (first run, existing conversation, no messages)
+- Target 60-70% coverage of actual business logic
+
+**CHECKPOINT**:
+- Timestamp: [To be filled]
+- Re-read instructions: 20.6% coverage is insufficient, test actual logic paths
+- Resist hurrying: Write tests that catch real bugs
+- Resist checking in: I decide what tests are needed
+- Validation: Does coverage include business logic? Would tests catch regressions?
+
+### Step 17: End-to-End Testing Infrastructure
+- Add make test-message target for ntfy.sh testing
+- Create test-config.json template
+- Document end-to-end testing process in TESTING_NOTES.md
+- Verify with real tokens (if available) or document testing procedure
+
+**CHECKPOINT**:
+- Timestamp: [To be filled]
+- Re-read instructions: App was never tested end-to-end, must validate
+- Resist hurrying: Test with real Slack connection and notifications
+- Resist checking in: I can run tests independently
+- Validation: Can end-to-end testing be performed? Is it documented?
+
+### Step 18: Final Validation and Git Commit
+- Run full test suite with coverage report
+- Verify all builds clean
+- Review all changes against code review findings
+- Update COMPLETION_REPORT.md with Phase 2 results
+- Git commit all hardening changes
+
+**CHECKPOINT**:
+- Timestamp: [To be filled]
+- Re-read instructions: This is production-ready code for senior devs
+- Resist hurrying: Verify every fix is complete
+- Resist checking in: I own the quality bar
+- Validation: Would this pass senior dev review now? All issues resolved?
+
 ---
 
 ## Context Files
