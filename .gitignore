@@ -30,3 +30,6 @@ test-config.json
 
 # Backup files from refactoring
 *.old
+
+# Context/planning files (contain development notes and may include sensitive info)
+.context/
