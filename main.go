@@ -18,12 +18,12 @@ import (
 
 // Constants for configurable behavior
 const (
-	DefaultPollIntervalSecs = 60
-	MaxMessagePreviewLength = 100
-	NotificationRateLimitSec = 2
+	DefaultPollIntervalSecs   = 60
+	MaxMessagePreviewLength   = 100
+	NotificationRateLimitSec  = 2
 	SlackAPIConversationLimit = 200
-	SlackAPIMessageLimit = 100
-	DefaultDMsOnly = true
+	SlackAPIMessageLimit      = 100
+	DefaultDMsOnly            = true
 )
 
 // Config represents the application configuration
@@ -218,9 +218,9 @@ func saveState(state *State) error {
 
 // SlackClient handles API calls to Slack
 type SlackClient struct {
-	xoxcToken     string
-	xoxdToken     string
-	httpClient    *http.Client
+	xoxcToken           string
+	xoxdToken           string
+	httpClient          *http.Client
 	authenticatedUserID string // ID of the authenticated user (to filter own messages)
 }
 
