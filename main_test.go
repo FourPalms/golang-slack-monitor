@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -143,7 +144,12 @@ func TestFormatMessage(t *testing.T) {
 		{
 			userName: "Jane",
 			message:  "This is a very long message that exceeds the 100 character limit and should be truncated properly with ellipsis at the end to make it fit",
-			expected: "DM from Jane: This is a very long message that exceeds the 100 character limit and should be truncated properly...",
+			expected: "DM from Jane: This is a very long message that exceeds the 100 character limit and should be truncated properly with ellipsis at the end to make it fit",
+		},
+		{
+			userName: "Bob",
+			message:  strings.Repeat("a", 600), // 600 chars exceeds 500 limit
+			expected: "DM from Bob: " + strings.Repeat("a", 497) + "...",
 		},
 		{
 			userName: "Bot",

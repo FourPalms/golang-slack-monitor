@@ -628,6 +628,61 @@ Cycle 1: [---- 12s ----] sleep  [---- 12s ----] sleep  ...
 
 ---
 
+### Step 21: Production Issues - Notification UX Improvements (2025-12-30)
+
+**Issues discovered during production testing**:
+
+1. **Notification message truncation too aggressive**:
+   - Current: MaxMessagePreviewLength = 100 characters
+   - User feedback: "Message I get on my phone from Notify is truncated too early"
+   - User preference: Not worried about length, don't truncate so drastically
+   - Impact: Can't see full message content in phone notifications
+
+2. **User display name showing incorrectly**:
+   - Current: Shows "DM from user D06..." (user ID + channel ID instead of real name)
+   - Expected: "DM from Adam Calder"
+   - **Root Cause Analysis**:
+     - `getUserInfo()` function calls `users.info` API but doesn't include token parameter
+     - GET requests to Slack API require `token` parameter in query string
+     - `getConversationHistory()` correctly adds token (line 333): `params.Set("token", c.xoxcToken)`
+     - `getUserInfo()` does NOT add token (line 378-379) - missing this critical line
+     - API call fails without token, falls back to `&SlackUser{Name: msg.User}` (line 492)
+     - Fallback uses user ID as name, resulting in "DM from U06..."
+   - **Comment in code** (line 276) says "For GET requests, we may need to add it as a query parameter" but doesn't actually do it
+
+**Fix Plan**:
+- [x] Increase MaxMessagePreviewLength from 100 to 500 characters (main.go:22)
+- [x] Add token parameter to getUserInfo() GET request (main.go:380)
+- [x] Update comment on line 276 to clarify token requirement
+- [ ] Test with production message to verify full name displays correctly
+
+**Implementation**:
+1. **Message truncation** (main.go:22):
+   - Changed `MaxMessagePreviewLength = 100` → `500`
+   - Users can now see much longer messages in phone notifications
+   - Updated test to verify 135-char message no longer truncated
+   - Added test for 600-char message (should truncate to 497 + "...")
+
+2. **User display name** (main.go:380):
+   - Added `params.Set("token", c.xoxcToken)` to getUserInfo() function
+   - Fixed API authentication for users.info endpoint
+   - getUserInfo() was missing token parameter that getConversationHistory() had
+   - Now notifications will show "DM from Adam Calder" instead of "DM from U06..."
+
+3. **Code clarity** (main.go:276):
+   - Updated comment: "For GET requests, we may need to add it" → "token MUST be added"
+   - Makes token requirement explicit for future GET endpoint additions
+
+4. **Test updates**:
+   - Updated TestFormatMessage to match new 500-char limit
+   - Added test case for messages exceeding 500 chars
+   - Added "strings" import to main_test.go
+   - All 13 tests pass ✅
+
+**Status**: FIXED ✅ - Ready for production testing
+
+---
+
 ## Context Files
 
 - `IMPLEMENTATION_PLAN.md` - This file, tracks progress

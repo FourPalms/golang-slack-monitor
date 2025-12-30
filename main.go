@@ -19,7 +19,7 @@ import (
 // Constants for configurable behavior
 const (
 	DefaultPollIntervalSecs   = 60
-	MaxMessagePreviewLength   = 100
+	MaxMessagePreviewLength   = 500
 	NotificationRateLimitSec  = 2
 	SlackAPIConversationLimit = 200
 	SlackAPIMessageLimit      = 100
@@ -273,7 +273,7 @@ func (c *SlackClient) makeSlackRequest(method, endpoint string, params url.Value
 	req.AddCookie(dsCookie)
 
 	// For POST requests, token is in the body parameters (not Authorization header)
-	// For GET requests, we may need to add it as a query parameter
+	// For GET requests, token MUST be added as a query parameter by the caller
 	// Authorization header is NOT used with stealth mode cookies
 
 	// Add browser User-Agent to match slack-mcp-server
@@ -377,6 +377,7 @@ func (c *SlackClient) testAuth() (string, error) {
 func (c *SlackClient) getUserInfo(userID string) (*SlackUser, error) {
 	params := url.Values{}
 	params.Set("user", userID)
+	params.Set("token", c.xoxcToken) // GET requests need token as query parameter
 
 	body, err := c.makeSlackRequest("GET", "users.info", params)
 	if err != nil {
