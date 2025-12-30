@@ -794,10 +794,13 @@ slack-monitor/
 - [x] Main is thin (109 lines) - just wiring and config loading
 
 **Step 22f: Update build system**
-- [ ] Update Makefile to build from `cmd/slack-monitor/`
-- [ ] Update `go.mod` module path if needed
-- [ ] Verify all imports use correct package paths
-- [ ] Update `.gitignore` if needed
+- [x] Update Makefile to build from `cmd/slack-monitor/`
+  - Changed: `go build -o slack-monitor main.go` → `go build -o slack-monitor ./cmd/slack-monitor`
+- [x] Verified `go.mod` module path correct: `github.com/jeremyhunt/slack-monitor`
+- [x] Moved old files to backup:
+  - `main.go` → `main.go.old` (646 lines, all code extracted to new packages)
+  - `main_test.go` → `main_test.go.old` (will migrate tests in Step 22g)
+- [x] Build successful ✅
 
 **Step 22g: Migrate tests**
 - [ ] Move unit tests to appropriate packages

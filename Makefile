@@ -12,7 +12,7 @@ help:
 
 build:
 	@echo "Building slack-monitor..."
-	go build -o slack-monitor main.go
+	go build -o slack-monitor ./cmd/slack-monitor
 	@echo "Build complete: ./slack-monitor"
 
 test:
