@@ -103,9 +103,9 @@ You need two tokens from your Slack browser session. This app uses "stealth mode
    - Copy the entire token value
 
 **Why both tokens?**
-- **xoxd token**: Goes in the "d" cookie for session authentication
-- **xoxc token**: Goes in API request parameters for user authentication
-- The app uses both together to authenticate as your user without creating a Slack app
+- **xoxd**: Cookie-based session authentication
+- **xoxc**: API request parameter authentication
+- Both required for "stealth mode" (no Slack app needed)
 
 ### Step 3: Create Configuration File
 
@@ -157,12 +157,13 @@ make run
 You'll see output like:
 ```
 2025/12/30 11:00:00 Slack Monitor starting...
-2025/12/30 11:00:00 Config loaded successfully (poll interval: 60s)
+2025/12/30 11:00:00 Starting monitoring...
+2025/12/30 11:00:00 Authenticated as yourusername (U123ABC) in workspace YourWorkspace
 2025/12/30 11:00:00 State loaded successfully (0 conversations tracked)
-2025/12/30 11:00:00 Starting monitoring loop...
 2025/12/30 11:00:00 Checking for new messages...
 2025/12/30 11:00:00 Checking 5 DM conversation(s)
-2025/12/30 11:00:01 Check cycle complete
+2025/12/30 11:00:00 Monitoring 5 active conversation(s) (skipped 0 deleted)
+2025/12/30 11:00:01 Check cycle completed in 123ms, waiting 60s before next cycle
 ```
 
 ⚠️ **Important**: The monitor cannot run when your Mac is in sleep mode. Use `make run` (which uses `caffeinate`) to keep your Mac awake while monitoring, or see the [Run as a service](#run-as-a-service-macos---launchd) section below.
@@ -285,11 +286,10 @@ Your tokens have expired. Slack tokens typically last several months but may exp
 
 The monitor has built-in rate limiting (2 seconds between notifications), but if you're getting too many:
 
-1. **Increase poll interval** in config:
+1. **Increase poll interval** in config (e.g., 300 = 5 minutes):
    ```json
    "poll_interval_seconds": 300
    ```
-   (This checks every 5 minutes instead of every 60 seconds)
 
 2. **Check state file** to see which conversations are tracked:
    ```bash
@@ -326,28 +326,16 @@ make clean
 
 ## Architecture
 
-Follows Ben Johnson's Standard Package Layout for clean separation of concerns:
+Follows Ben Johnson's Standard Package Layout:
 
 ```
 slack-monitor/
 ├── monitor.go              # Domain types & interfaces
-├── slack/
-│   ├── client.go           # Slack API client implementation
-│   └── types.go            # API response types
-├── notification/
-│   └── service.go          # ntfy.sh notification service
-├── storage/
-│   └── state.go            # File-based state persistence
-└── cmd/slack-monitor/
-    └── main.go             # Main entry point (dependency wiring)
+├── slack/                  # Slack API client (xoxc/xoxd auth)
+├── notification/           # ntfy.sh service (2s rate limit)
+├── storage/                # State persistence (atomic writes)
+└── cmd/slack-monitor/      # Main entry point & dependency wiring
 ```
-
-**Key Components:**
-- **Domain Layer** (`monitor.go`): Core types (Message, Conversation, State) and interfaces (SlackClient, Notifier, StateStore)
-- **Slack Client** (`slack/`): Authenticates with xoxc/xoxd tokens, polls `conversations.list` and `conversations.history`
-- **Notification Service** (`notification/`): Sends to ntfy.sh with rate limiting (2-second minimum)
-- **State Storage** (`storage/`): Atomic writes to `state.json`, tracks last-checked timestamps
-- **Main Package** (`cmd/slack-monitor/`): Loads config, wires dependencies, handles graceful shutdown (SIGTERM/SIGINT)
 
 ## Security
 
@@ -358,19 +346,9 @@ slack-monitor/
 
 ## Known Limitations
 
-- **DMs only**: Currently only monitors direct messages (no channels or @mentions yet)
-- **No threading**: Monitors top-level messages only
+- **DMs only**: Currently only monitors direct messages (no channels or @mentions)
 - **Token expiration**: No automatic token refresh (manual re-extraction required)
 - **Single workspace**: Monitors one Slack workspace at a time
-
-## Future Enhancements
-
-- [ ] Monitor @mentions in channels
-- [ ] Keyword filtering
-- [ ] Multiple workspaces support
-- [ ] Web UI dashboard
-- [ ] Docker container
-- [ ] Automatic token refresh (OAuth flow)
 
 ## License
 
@@ -379,7 +357,3 @@ MIT License - feel free to use and modify.
 ## Contributing
 
 Pull requests welcome! Please include tests for new features.
-
-## Author
-
-Built with ❤️ by Jeremy Hunt
