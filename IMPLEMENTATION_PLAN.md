@@ -683,6 +683,136 @@ Cycle 1: [---- 12s ----] sleep  [---- 12s ----] sleep  ...
 
 ---
 
+### Step 22: Refactor to Ben Johnson's Standard Package Layout (2025-12-30)
+
+**Current State**:
+- All code in single 620-line `main.go` file
+- Everything in `main` package (not reusable/testable as library)
+- Domain logic, API clients, notification services all mixed together
+- Hard to test individual components in isolation
+- No clear separation of concerns
+
+**Goal**: Refactor to Ben Johnson's Standard Package Layout approach (2016):
+- **Domain types at root** - Core types/interfaces in root package
+- **Group by context, not layers** - Organize by domain (slack, notification, monitor) not technical layers (models, services, controllers)
+- **Dependencies point inward** - External packages depend on domain types, domain doesn't depend on external packages
+- **Thin main package** - Just wiring and initialization in `cmd/slack-monitor/main.go`
+- **Interfaces for testability** - Define interfaces in domain, implement in subpackages
+
+**Target Structure**:
+```
+slack-monitor/
+  monitor.go           # Domain types: Message, Conversation, State, Monitor interface
+  monitor_test.go      # Unit tests for domain logic
+
+  slack/
+    client.go          # Slack API client implementation
+    client_test.go     # Slack client tests
+    auth.go            # Authentication logic
+    types.go           # Slack-specific API types
+
+  notification/
+    service.go         # Notification service implementation
+    service_test.go    # Notification tests
+
+  storage/
+    state.go           # State persistence (load/save)
+    state_test.go      # State storage tests
+
+  cmd/slack-monitor/
+    main.go            # Thin main - just wiring and config loading
+
+  config.json          # Example config (move to root)
+  Makefile             # Build commands
+  go.mod               # Dependencies
+```
+
+**Refactoring Steps**:
+
+**Step 22a: Create package structure and move domain types**
+- [ ] Create directory structure: `slack/`, `notification/`, `storage/`, `cmd/slack-monitor/`
+- [ ] Create `monitor.go` at root with core domain types:
+  - `Message` - Represents a Slack message
+  - `Conversation` - Represents a DM conversation
+  - `State` - Represents monitoring state (last checked timestamps)
+  - `Monitor` interface - Core monitoring operations
+  - `SlackClient` interface - Abstract Slack API operations
+  - `Notifier` interface - Abstract notification operations
+  - `StateStore` interface - Abstract state persistence
+- [ ] Define interfaces first, implementations will reference them
+- [ ] Package name: `monitor` (not `main`)
+
+**Step 22b: Extract Slack client to `slack/` package**
+- [ ] Move Slack API client code to `slack/client.go`:
+  - `Client` struct (implements `monitor.SlackClient` interface)
+  - `makeSlackRequest()` - HTTP request handling
+  - `getConversationHistory()` - Fetch messages
+  - `getUserInfo()` - Get user details
+  - `testAuth()` - Authentication validation
+  - `listConversations()` - List DM conversations
+- [ ] Move Slack-specific types to `slack/types.go`:
+  - `SlackMessage`, `SlackUser`, `SlackConversation`
+  - API response types (SlackHistoryResponse, etc.)
+- [ ] Move authentication logic to `slack/auth.go`
+- [ ] Client depends on `monitor` package interfaces, not vice versa
+- [ ] Update tests to use new package structure
+
+**Step 22c: Extract notification service to `notification/` package**
+- [ ] Move notification code to `notification/service.go`:
+  - `Service` struct (implements `monitor.Notifier` interface)
+  - `sendNotification()` - Send to ntfy.sh
+  - `formatMessage()` - Format DM for notification
+  - Rate limiting logic
+- [ ] Service depends on `monitor.Message` type
+- [ ] Update tests
+
+**Step 22d: Extract state storage to `storage/` package**
+- [ ] Move state persistence to `storage/state.go`:
+  - `FileStore` struct (implements `monitor.StateStore` interface)
+  - `loadState()` - Load from JSON file
+  - `saveState()` - Save to JSON file
+  - File path management
+- [ ] Store depends on `monitor.State` type
+- [ ] Update tests
+
+**Step 22e: Create thin main package**
+- [ ] Create `cmd/slack-monitor/main.go`:
+  - Config loading only
+  - Instantiate implementations: `slack.Client`, `notification.Service`, `storage.FileStore`
+  - Wire dependencies together
+  - Run monitoring loop
+  - Signal handling
+- [ ] Move monitoring loop logic to `monitor.go` as `Run()` function
+- [ ] Main just calls `monitor.Run()` with implementations
+
+**Step 22f: Update build system**
+- [ ] Update Makefile to build from `cmd/slack-monitor/`
+- [ ] Update `go.mod` module path if needed
+- [ ] Verify all imports use correct package paths
+- [ ] Update `.gitignore` if needed
+
+**Step 22g: Migrate tests**
+- [ ] Move unit tests to appropriate packages
+- [ ] Tests in `monitor_test.go` use mocks of interfaces
+- [ ] Tests in `slack/client_test.go` test Slack client in isolation
+- [ ] Tests in `notification/service_test.go` test notifications in isolation
+- [ ] Tests in `storage/state_test.go` test state persistence
+- [ ] All 13 existing tests still pass
+- [ ] Consider adding integration tests in `cmd/slack-monitor/main_test.go`
+
+**Benefits**:
+- **Testability** - Can mock Slack client, notifier, state store independently
+- **Reusability** - Core `monitor` package can be imported by other tools
+- **Clarity** - Clear separation: domain (what), implementations (how), wiring (main)
+- **Maintainability** - Easy to find and modify specific functionality
+- **Extensibility** - Easy to add new notifiers (email, webhook) or storage backends (database)
+
+**Reference**: https://medium.com/@benbjohnson/standard-package-layout-7cdbc8391fc1
+
+**Status**: PLANNED - Ready to implement after production validation of Step 21 fixes
+
+---
+
 ## Context Files
 
 - `IMPLEMENTATION_PLAN.md` - This file, tracks progress
