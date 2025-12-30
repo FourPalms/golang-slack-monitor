@@ -533,19 +533,33 @@ func monitorLoop(ctx context.Context, config *Config, state *State) {
 
 	notifier := newNotificationService(config.Notifications.NtfyTopic)
 
-	ticker := time.NewTicker(time.Duration(config.Slack.PollIntervalSecs) * time.Second)
-	defer ticker.Stop()
+	pollInterval := time.Duration(config.Slack.PollIntervalSecs) * time.Second
 
-	// Run first check immediately
-	checkAllConversations(ctx, slackClient, notifier, state)
-
+	// Use check-then-wait pattern to prevent overlapping cycles
+	// This ensures we never start a new check while previous one is still running
 	for {
+		// Check for cancellation before starting cycle
 		select {
 		case <-ctx.Done():
 			log.Println("Monitoring loop stopping...")
 			return
-		case <-ticker.C:
-			checkAllConversations(ctx, slackClient, notifier, state)
+		default:
+		}
+
+		// Run check cycle and measure duration
+		cycleStart := time.Now()
+		checkAllConversations(ctx, slackClient, notifier, state)
+		cycleDuration := time.Since(cycleStart)
+
+		log.Printf("Check cycle completed in %v, waiting %v before next cycle", cycleDuration, pollInterval)
+
+		// Wait for configured interval AFTER check completes
+		select {
+		case <-ctx.Done():
+			log.Println("Monitoring loop stopping...")
+			return
+		case <-time.After(pollInterval):
+			// Next cycle will start
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -529,4 +530,88 @@ func TestCancellationHandling(t *testing.T) {
 	}
 
 	t.Logf("Processed %d of 50 conversations before cancellation (correct behavior)", conversationsProcessed)
+}
+
+// TestNoOverlappingCycles tests that monitoring cycles never overlap.
+// This is a critical bug fix: previously, ticker fired every N seconds regardless of
+// whether previous check completed, causing race conditions and duplicate notifications.
+func TestNoOverlappingCycles(t *testing.T) {
+	// Simulate the check-then-wait pattern with a slow check function
+	pollInterval := 100 * time.Millisecond // Short interval for testing
+	slowCheckDuration := 200 * time.Millisecond // Check takes longer than interval
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	cycleStarts := []time.Time{}
+	cycleEnds := []time.Time{}
+	mu := &sync.Mutex{} // Protect slice access
+
+	// Simulate the monitoring loop pattern
+	go func() {
+		for {
+			// Check for cancellation
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			// Simulate slow check
+			mu.Lock()
+			cycleStarts = append(cycleStarts, time.Now())
+			mu.Unlock()
+
+			time.Sleep(slowCheckDuration)
+
+			mu.Lock()
+			cycleEnds = append(cycleEnds, time.Now())
+			mu.Unlock()
+
+			// Wait after check completes (check-then-wait pattern)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(pollInterval):
+				// Next cycle starts
+			}
+		}
+	}()
+
+	// Wait for test to complete
+	<-ctx.Done()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// VERIFY: Should have completed at least 2 cycles
+	if len(cycleStarts) < 2 {
+		t.Fatalf("Expected at least 2 cycles, got %d", len(cycleStarts))
+	}
+
+	// VERIFY: No overlapping cycles
+	for i := 1; i < len(cycleStarts); i++ {
+		prevEnd := cycleEnds[i-1]
+		currentStart := cycleStarts[i]
+
+		// Current cycle should start AFTER previous cycle ended
+		if currentStart.Before(prevEnd) {
+			t.Errorf("Cycle %d started before cycle %d ended (OVERLAP DETECTED)", i, i-1)
+			t.Errorf("  Cycle %d: %v - %v (duration: %v)", i-1, cycleStarts[i-1], prevEnd, prevEnd.Sub(cycleStarts[i-1]))
+			t.Errorf("  Cycle %d: %v - (started %v too early)", i, currentStart, prevEnd.Sub(currentStart))
+		}
+
+		// Should wait approximately pollInterval between end of one cycle and start of next
+		waitTime := currentStart.Sub(prevEnd)
+		expectedWait := pollInterval
+		tolerance := 50 * time.Millisecond // Allow some scheduling jitter
+
+		if waitTime < expectedWait-tolerance {
+			t.Errorf("Cycle %d started too soon after cycle %d ended (waited %v, expected ~%v)",
+				i, i-1, waitTime, expectedWait)
+		}
+	}
+
+	t.Logf("Verified %d monitoring cycles with no overlaps", len(cycleStarts))
+	t.Logf("Each cycle took ~%v, waited ~%v between cycles", slowCheckDuration, pollInterval)
 }

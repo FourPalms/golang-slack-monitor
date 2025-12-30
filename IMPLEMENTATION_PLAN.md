@@ -527,6 +527,77 @@
 
 ---
 
+### Step 20: Production Bug #3 - Ticker Race Condition (2025-12-30)
+
+**Issue discovered**: User reported message not being detected and observed that 10-second poll interval is shorter than time to check all 200 conversations (~12+ seconds).
+
+**Root Cause Analysis**:
+- Current implementation uses `time.Ticker` which fires every N seconds REGARDLESS of whether previous check finished
+- If checking 200 conversations takes 12+ seconds, ticker fires again before first check completes
+- This causes:
+  1. **Overlapping checks** - Multiple goroutines checking conversations simultaneously
+  2. **Race conditions** - Concurrent state.LastChecked map updates (not thread-safe)
+  3. **Double notifications** - Same message processed by multiple overlapping cycles
+  4. **Wasted API calls** - Redundant checks burning through Slack rate limits
+  5. **Messages missed** - State updates from overlapping cycles overwrite each other
+
+**Current Broken Pattern** (main.go:536-550):
+```go
+ticker := time.NewTicker(time.Duration(config.Slack.PollIntervalSecs) * time.Second)
+// Fires every 10s even if previous check takes 12s - RACE CONDITION
+for {
+    select {
+    case <-ticker.C:
+        checkAllConversations(ctx, slackClient, notifier, state) // Can overlap!
+    }
+}
+```
+
+**Timing Diagram - Current (Broken)**:
+```
+Time:    0s       10s       20s       30s
+Cycle 1: [------- 12 seconds -------]
+Cycle 2:          [------- 12 seconds -------]  <- OVERLAPS with Cycle 1!
+Cycle 3:                    [------- 12 seconds -------]  <- OVERLAPS with Cycle 2!
+```
+
+**Required Fix Pattern** (check → wait → repeat):
+```go
+for {
+    select {
+    case <-ctx.Done():
+        return
+    default:
+        checkAllConversations(ctx, slackClient, notifier, state)
+        // Wait for configured interval AFTER check completes
+        select {
+        case <-ctx.Done():
+            return
+        case <-time.After(time.Duration(config.Slack.PollIntervalSecs) * time.Second):
+            // Next cycle starts
+        }
+    }
+}
+```
+
+**Timing Diagram - Fixed (Sequential)**:
+```
+Time:    0s            12s      22s            34s      44s
+Cycle 1: [---- 12s ----] sleep  [---- 12s ----] sleep  ...
+         (check done)   (10s)   (check done)   (10s)
+```
+
+**Fix Tasks**:
+- [ ] Change from ticker to check-then-wait pattern
+- [ ] Add mutex protection for state.LastChecked map access (defensive)
+- [ ] Add timing metrics logging (how long each cycle takes)
+- [ ] Add regression test simulating slow checks
+- [ ] Investigate why Kim Stout message wasn't detected in actual run
+
+**Status**: DISCOVERED - Ready to implement fix
+
+---
+
 ## Context Files
 
 - `IMPLEMENTATION_PLAN.md` - This file, tracks progress
