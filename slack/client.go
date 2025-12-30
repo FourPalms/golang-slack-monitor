@@ -88,8 +88,9 @@ func (c *Client) GetDMConversations() ([]monitor.Conversation, error) {
 	conversations := make([]monitor.Conversation, len(response.Channels))
 	for i, ch := range response.Channels {
 		conversations[i] = monitor.Conversation{
-			ID:   ch.ID,
-			User: ch.User,
+			ID:            ch.ID,
+			User:          ch.User,
+			IsUserDeleted: ch.IsUserDeleted,
 		}
 	}
 

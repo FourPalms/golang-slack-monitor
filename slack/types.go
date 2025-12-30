@@ -2,8 +2,9 @@ package slack
 
 // conversationResponse represents a Slack conversation (DM or channel) from API
 type conversationResponse struct {
-	ID   string `json:"id"`
-	User string `json:"user"` // For DMs, this is the other user's ID
+	ID            string `json:"id"`
+	User          string `json:"user"`            // For DMs, this is the other user's ID
+	IsUserDeleted bool   `json:"is_user_deleted"` // Whether the user has been deleted
 }
 
 // conversationsListResponse represents the API response from conversations.list

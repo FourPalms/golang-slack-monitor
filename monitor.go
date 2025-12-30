@@ -17,8 +17,9 @@ type Message struct {
 
 // Conversation represents a Slack DM conversation
 type Conversation struct {
-	ID   string // Channel ID (e.g., "D06...")
-	User string // Other user's ID in the DM
+	ID            string // Channel ID (e.g., "D06...")
+	User          string // Other user's ID in the DM
+	IsUserDeleted bool   // Whether the user has been deleted
 }
 
 // State represents the monitoring state - tracks last checked timestamp per conversation
@@ -88,6 +89,7 @@ type Monitor struct {
 	notifier    Notifier
 	stateStore  StateStore
 	config      *Config
+	userCache   map[string]string // userID -> display name cache
 }
 
 // NewMonitor creates a new Monitor instance
@@ -97,6 +99,7 @@ func NewMonitor(slackClient SlackClient, notifier Notifier, stateStore StateStor
 		notifier:    notifier,
 		stateStore:  stateStore,
 		config:      config,
+		userCache:   make(map[string]string),
 	}
 }
 
@@ -158,6 +161,32 @@ func (m *Monitor) checkAllConversations(ctx context.Context, state *State) error
 
 	log.Printf("Checking %d DM conversation(s)", len(conversations))
 
+	// Log deleted users with display names
+	var deletedUsers []struct {
+		channelID   string
+		userID      string
+		displayName string
+	}
+	for _, conv := range conversations {
+		if conv.IsUserDeleted {
+			displayName := m.getUserDisplayName(conv.User)
+			deletedUsers = append(deletedUsers, struct {
+				channelID   string
+				userID      string
+				displayName string
+			}{conv.ID, conv.User, displayName})
+		}
+	}
+
+	if len(deletedUsers) > 0 {
+		log.Printf("Found %d conversation(s) with deleted users (%.1f%% of total)",
+			len(deletedUsers), float64(len(deletedUsers))/float64(len(conversations))*100)
+		log.Printf("Complete list of deleted user conversations:")
+		for _, du := range deletedUsers {
+			log.Printf("  - %s: %s (user ID: %s)", du.channelID, du.displayName, du.userID)
+		}
+	}
+
 	// Check each conversation for new messages
 	for _, conv := range conversations {
 		// Check for cancellation before each conversation
@@ -184,6 +213,10 @@ func (m *Monitor) checkAllConversations(ctx context.Context, state *State) error
 
 // checkConversation checks a single conversation for new messages
 func (m *Monitor) checkConversation(conv Conversation, state *State) error {
+	// Get display name for logging
+	displayName := m.getUserDisplayName(conv.User)
+	log.Printf("  → Checking DM with %s (%s)", displayName, conv.ID)
+
 	// Get last checked timestamp for this conversation
 	lastChecked, exists := state.LastChecked[conv.ID]
 	if !exists {
@@ -208,17 +241,8 @@ func (m *Monitor) checkConversation(conv Conversation, state *State) error {
 			continue
 		}
 
-		// Get user info for sender name
-		user, err := m.slackClient.GetUserInfo(msg.User)
-		if err != nil {
-			user = &User{Name: msg.User} // Fallback to user ID
-		}
-
-		// Format notification message
-		displayName := user.RealName
-		if displayName == "" {
-			displayName = user.Name
-		}
+		// Get user display name and format notification
+		displayName := m.getUserDisplayName(msg.User)
 		notificationMsg := formatNotification(displayName, msg.Text)
 
 		// Send notification
@@ -233,10 +257,8 @@ func (m *Monitor) checkConversation(conv Conversation, state *State) error {
 		state.LastChecked[conv.ID] = msg.Timestamp
 	}
 
-	if newCount == 0 {
-		// No new messages - update timestamp to now to avoid re-checking
-		state.LastChecked[conv.ID] = formatTimestamp(time.Now())
-	}
+	// Note: If newCount == 0, we intentionally do NOT update state.LastChecked
+	// Preserving the actual timestamp allows tiered monitoring to work correctly
 
 	return nil
 }
@@ -258,4 +280,32 @@ func formatNotification(userName, messageText string) string {
 		messageText = messageText[:maxLength-3] + "..."
 	}
 	return fmt.Sprintf("DM from %s: %s", userName, messageText)
+}
+
+// getUserDisplayName gets a user's display name (from cache or API)
+func (m *Monitor) getUserDisplayName(userID string) string {
+	// Check cache first
+	if displayName, exists := m.userCache[userID]; exists {
+		return displayName
+	}
+
+	// Fetch from API
+	user, err := m.slackClient.GetUserInfo(userID)
+	if err != nil {
+		// Fallback to user ID on error
+		return userID
+	}
+
+	// Determine display name
+	displayName := user.RealName
+	if displayName == "" {
+		displayName = user.Name
+	}
+	if displayName == "" {
+		displayName = userID // Final fallback
+	}
+
+	// Cache for future use
+	m.userCache[userID] = displayName
+	return displayName
 }
