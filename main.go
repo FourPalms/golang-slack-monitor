@@ -256,9 +256,28 @@ func (c *SlackClient) makeSlackRequest(method, endpoint string, params url.Value
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Add authentication headers
-	req.Header.Set("Cookie", fmt.Sprintf("d=%s", c.xoxcToken))
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.xoxdToken))
+	// Add authentication - stealth mode uses both tokens AND two cookies
+	// Slack requires both "d" and "d-s" cookies (discovered from rusq/slackdump library)
+	// CRITICAL: xoxd goes in "d" cookie, xoxc goes in token parameter (not the other way around!)
+	dCookie := &http.Cookie{
+		Name:  "d",
+		Value: c.xoxdToken, // xoxd token goes in "d" cookie
+	}
+	req.AddCookie(dCookie)
+
+	// d-s cookie is a timestamp (current Unix time - 10 seconds)
+	dsCookie := &http.Cookie{
+		Name:  "d-s",
+		Value: fmt.Sprintf("%d", time.Now().Unix()-10),
+	}
+	req.AddCookie(dsCookie)
+
+	// For POST requests, token is in the body parameters (not Authorization header)
+	// For GET requests, we may need to add it as a query parameter
+	// Authorization header is NOT used with stealth mode cookies
+
+	// Add browser User-Agent to match slack-mcp-server
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -284,6 +303,7 @@ func (c *SlackClient) getDMConversations() ([]SlackConversation, error) {
 	params.Set("types", "im")
 	params.Set("exclude_archived", "true")
 	params.Set("limit", fmt.Sprintf("%d", SlackAPIConversationLimit))
+	params.Set("token", c.xoxcToken) // GET requests need token as query parameter
 
 	body, err := c.makeSlackRequest("GET", "conversations.list", params)
 	if err != nil {
@@ -310,6 +330,7 @@ func (c *SlackClient) getConversationHistory(channelID, oldestTS string) ([]Slac
 		params.Set("oldest", oldestTS)
 	}
 	params.Set("limit", fmt.Sprintf("%d", SlackAPIMessageLimit))
+	params.Set("token", c.xoxcToken) // GET requests need token as query parameter
 
 	body, err := c.makeSlackRequest("GET", "conversations.history", params)
 	if err != nil {
@@ -330,7 +351,11 @@ func (c *SlackClient) getConversationHistory(channelID, oldestTS string) ([]Slac
 
 // testAuth validates the authentication tokens and returns the authenticated user ID
 func (c *SlackClient) testAuth() (string, error) {
-	body, err := c.makeSlackRequest("GET", "auth.test", url.Values{})
+	// slack-go uses POST with token as a parameter for auth.test
+	params := url.Values{
+		"token": {c.xoxcToken},
+	}
+	body, err := c.makeSlackRequest("POST", "auth.test", params)
 	if err != nil {
 		return "", err
 	}

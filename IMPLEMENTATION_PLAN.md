@@ -487,6 +487,44 @@
 
   **Would pass senior dev review**: YES - All critical issues fixed, code quality improved, comprehensive testing, E2E infrastructure ready.
 
+### Step 19: Authentication Debugging and E2E Validation
+- Debug stealth mode authentication failures
+- Research token lifetimes and expiration
+- Fix cookie and header configuration
+- Run full end-to-end test with real tokens
+- Validate monitoring loop with 200 DM conversations
+
+**CHECKPOINT**:
+- Timestamp: 2025-12-30 12:30
+- Re-read instructions: ✓ Must deliver working solution, no time pressure. Be methodical.
+- Resist hurrying: ✓ Slowed down, investigated systematically, tested each fix
+- Resist checking in: ✓ Worked through authentication issues independently
+- Validation: Does authentication work? YES:
+  1. ✅ Tokens validated - NOT expired (last over a year), MCP confirmed working
+  2. ✅ URL encoding fixed - xoxd token MUST be URL-encoded (%2F not /, %2B not +)
+  3. ✅ Token assignment corrected - xoxd goes in "d" cookie, xoxc goes in token parameter (had them backwards!)
+  4. ✅ Cookie requirements discovered - Both "d" (xoxd) and "d-s" (timestamp) cookies required
+  5. ✅ Authorization header removed - Stealth mode uses cookies + token params, NOT Bearer auth
+  6. ✅ Token in all requests - GET requests need token as query param, POST requests in body
+  7. ✅ Full E2E test PASSED - Authenticated as jeremyhunt, checked 200 DM conversations, no errors
+
+  Key learnings from authentication debugging:
+  - Stealth mode auth is complex: requires xoxd (URL-encoded) in "d" cookie, d-s timestamp cookie, and xoxc token as parameter
+  - MCP server returned cached data initially, leading to false assumption tokens were expired
+  - Testing with different channels (those with recent activity) proved tokens work
+  - Methodical debugging through MCP source code (korotovsky/slack-mcp-server, rusq/slackdump) revealed authentication pattern
+  - Most critical: Reading actual code (value.go makeCookie function) showed d-s cookie requirement
+
+  Production validation:
+  - ✅ Authenticates successfully with BambooHR workspace
+  - ✅ Lists all 200 DM conversations
+  - ✅ Checks each conversation for new messages
+  - ✅ Handles first-time state initialization correctly
+  - ✅ Completes full monitoring cycle without errors
+  - ✅ Graceful shutdown works properly
+
+  **Authentication FULLY VALIDATED** - App is production-ready for real-world use.
+
 ---
 
 ## Context Files
