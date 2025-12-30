@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	conversationLimit = 200 // Max conversations to fetch per API call
+	conversationLimit = 500 // Max conversations to fetch per API call
 	messageLimit      = 100 // Max messages to fetch per API call
 )
 
