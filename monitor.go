@@ -185,10 +185,21 @@ func (m *Monitor) checkAllConversations(ctx context.Context, state *State) error
 		for _, du := range deletedUsers {
 			log.Printf("  - %s: %s (user ID: %s)", du.channelID, du.displayName, du.userID)
 		}
+		log.Printf("Skipping deleted user conversations (they cannot send new messages)")
 	}
 
-	// Check each conversation for new messages
+	// Filter to only active conversations (skip deleted users)
+	activeConversations := make([]Conversation, 0, len(conversations))
 	for _, conv := range conversations {
+		if !conv.IsUserDeleted {
+			activeConversations = append(activeConversations, conv)
+		}
+	}
+
+	log.Printf("Monitoring %d active conversation(s) (skipped %d deleted)", len(activeConversations), len(deletedUsers))
+
+	// Check each active conversation for new messages
+	for _, conv := range activeConversations {
 		// Check for cancellation before each conversation
 		select {
 		case <-ctx.Done():
