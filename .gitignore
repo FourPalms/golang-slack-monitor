@@ -24,3 +24,9 @@ go.work
 config.json
 state.json
 *.log
+
+# Test files
+test-config.json
+
+# Backup files from refactoring
+*.old

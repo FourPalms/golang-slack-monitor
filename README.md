@@ -10,7 +10,7 @@ A lightweight Go application that monitors your Slack DMs and sends phone notifi
 - 💾 Persistent state to avoid duplicate notifications
 - 🔒 Simple manual token setup
 - 🚀 No external dependencies (stdlib only)
-- ⚡ Lightweight and fast (~400 lines of Go)
+- ⚡ Lightweight and fast (clean package architecture)
 
 ## Prerequisites
 
@@ -23,8 +23,8 @@ A lightweight Go application that monitors your Slack DMs and sends phone notifi
 ### Build from source
 
 ```bash
-git clone https://github.com/jeremyhunt/slack-monitor
-cd slack-monitor
+git clone git@github.com:FourPalms/golang-slack-monitor.git
+cd golang-slack-monitor
 make build
 ```
 
@@ -271,11 +271,28 @@ make clean
 
 ## Architecture
 
-- **Config Management**: Loads and validates `config.json`
-- **State Management**: Tracks last-checked timestamps in `state.json` (atomic writes)
-- **Slack API Client**: Authenticates with xoxc/xoxd tokens, polls `conversations.list` and `conversations.history`
-- **Notification Service**: Sends to ntfy.sh with rate limiting
-- **Monitoring Loop**: Runs every N seconds (configurable), handles graceful shutdown on SIGTERM/SIGINT
+Follows Ben Johnson's Standard Package Layout for clean separation of concerns:
+
+```
+slack-monitor/
+├── monitor.go              # Domain types & interfaces
+├── slack/
+│   ├── client.go           # Slack API client implementation
+│   └── types.go            # API response types
+├── notification/
+│   └── service.go          # ntfy.sh notification service
+├── storage/
+│   └── state.go            # File-based state persistence
+└── cmd/slack-monitor/
+    └── main.go             # Main entry point (dependency wiring)
+```
+
+**Key Components:**
+- **Domain Layer** (`monitor.go`): Core types (Message, Conversation, State) and interfaces (SlackClient, Notifier, StateStore)
+- **Slack Client** (`slack/`): Authenticates with xoxc/xoxd tokens, polls `conversations.list` and `conversations.history`
+- **Notification Service** (`notification/`): Sends to ntfy.sh with rate limiting (2-second minimum)
+- **State Storage** (`storage/`): Atomic writes to `state.json`, tracks last-checked timestamps
+- **Main Package** (`cmd/slack-monitor/`): Loads config, wires dependencies, handles graceful shutdown (SIGTERM/SIGINT)
 
 ## Security
 
