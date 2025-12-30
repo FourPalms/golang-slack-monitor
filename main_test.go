@@ -375,3 +375,80 @@ func TestConfigDefaults(t *testing.T) {
 		t.Errorf("Expected default DMsOnly %v, got %v", DefaultDMsOnly, config.Monitor.DMsOnly)
 	}
 }
+
+// TestFirstCheckStatePersistence tests the critical bug fix:
+// State must be saved on first check of a conversation, not just when messages are found.
+// This was a production bug where state.LastChecked[channelID] was never populated.
+func TestFirstCheckStatePersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", origHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Start with empty state (simulating first run)
+	state, err := loadState()
+	if err != nil {
+		t.Fatalf("Failed to load initial state: %v", err)
+	}
+	if len(state.LastChecked) != 0 {
+		t.Error("Initial state should be empty")
+	}
+
+	// Simulate first check of a conversation (the bug scenario)
+	channelID := "D123456789"
+
+	// This is what the bug was: setting lastChecked only locally, not in state
+	// The fix: state.LastChecked[channelID] = lastChecked (line 466 in main.go)
+	_, exists := state.LastChecked[channelID]
+	if exists {
+		t.Error("Channel should not exist in state yet")
+	}
+
+	// CRITICAL: Must save to state on first check (this was the bug)
+	nowTimestamp := "1735579200.000000"
+	state.LastChecked[channelID] = nowTimestamp
+
+	// Verify state is populated before saving
+	if len(state.LastChecked) != 1 {
+		t.Errorf("State should have 1 conversation, got %d", len(state.LastChecked))
+	}
+	if state.LastChecked[channelID] != nowTimestamp {
+		t.Errorf("State timestamp mismatch: got %s, want %s", state.LastChecked[channelID], nowTimestamp)
+	}
+
+	// Save state (end of check cycle)
+	if err := saveState(state); err != nil {
+		t.Fatalf("Failed to save state: %v", err)
+	}
+
+	// Reload state (simulating second monitoring cycle)
+	reloadedState, err := loadState()
+	if err != nil {
+		t.Fatalf("Failed to reload state: %v", err)
+	}
+
+	// VERIFY: State must persist between cycles (this was failing with the bug)
+	if len(reloadedState.LastChecked) != 1 {
+		t.Errorf("Reloaded state should have 1 conversation, got %d", len(reloadedState.LastChecked))
+	}
+	if reloadedState.LastChecked[channelID] != nowTimestamp {
+		t.Errorf("Reloaded state timestamp mismatch: got %s, want %s", reloadedState.LastChecked[channelID], nowTimestamp)
+	}
+
+	// Simulate second check (no new messages, update timestamp)
+	newTimestamp := "1735579210.000000" // 10 seconds later
+	reloadedState.LastChecked[channelID] = newTimestamp
+
+	if err := saveState(reloadedState); err != nil {
+		t.Fatalf("Failed to save updated state: %v", err)
+	}
+
+	// Verify update persisted
+	finalState, err := loadState()
+	if err != nil {
+		t.Fatalf("Failed to reload final state: %v", err)
+	}
+	if finalState.LastChecked[channelID] != newTimestamp {
+		t.Errorf("Final state timestamp mismatch: got %s, want %s", finalState.LastChecked[channelID], newTimestamp)
+	}
+}

@@ -461,9 +461,10 @@ func checkForNewMessages(slackClient *SlackClient, notifier *NotificationService
 	// Get last checked timestamp for this conversation
 	lastChecked, exists := state.LastChecked[channelID]
 	if !exists {
-		// First time checking this conversation, start from now
+		// First time checking this conversation, start from now to avoid backlog spam
 		lastChecked = fmt.Sprintf("%.6f", float64(time.Now().Unix()))
-		log.Printf("First time checking %s, starting from now", channelID)
+		state.LastChecked[channelID] = lastChecked // CRITICAL: Save to state immediately
+		log.Printf("First time checking %s, starting from now (saved to state)", channelID)
 	}
 
 	// Fetch messages since last check
@@ -471,6 +472,8 @@ func checkForNewMessages(slackClient *SlackClient, notifier *NotificationService
 	if err != nil {
 		return fmt.Errorf("failed to get conversation history for %s: %w", channelID, err)
 	}
+
+	log.Printf("Checking %s: fetched %d message(s) since %s", channelID, len(messages), lastChecked)
 
 	// Process messages in reverse order (oldest first)
 	newCount := 0
@@ -507,10 +510,8 @@ func checkForNewMessages(slackClient *SlackClient, notifier *NotificationService
 
 	if newCount > 0 {
 		log.Printf("Found %d new message(s) in %s", newCount, channelID)
-	}
-
-	// If no new messages but we checked, update timestamp to now to avoid re-checking old messages
-	if newCount == 0 && exists {
+	} else {
+		// No new messages - update timestamp to now to avoid re-checking
 		state.LastChecked[channelID] = fmt.Sprintf("%.6f", float64(time.Now().Unix()))
 	}
 
@@ -573,6 +574,8 @@ func checkAllConversations(slackClient *SlackClient, notifier *NotificationServi
 	// Save state after each check cycle
 	if err := saveState(state); err != nil {
 		log.Printf("Warning: failed to save state: %v", err)
+	} else {
+		log.Printf("State saved (%d conversations tracked)", len(state.LastChecked))
 	}
 
 	log.Println("Check cycle complete")
