@@ -142,10 +142,16 @@ chmod 600 ~/.slack-monitor/config.json
 
 ## Usage
 
-### Run in foreground (for testing)
+### Run in foreground (recommended for testing)
 
+**Using make (keeps Mac awake automatically):**
 ```bash
-slack-monitor
+make run
+```
+
+**Or run directly:**
+```bash
+./slack-monitor
 ```
 
 You'll see output like:
@@ -159,16 +165,20 @@ You'll see output like:
 2025/12/30 11:00:01 Check cycle complete
 ```
 
-### Run in background
+⚠️ **Important**: The monitor cannot run when your Mac is in sleep mode. Use `make run` (which uses `caffeinate`) to keep your Mac awake while monitoring, or see the [Run as a service](#run-as-a-service-macos---launchd) section below.
+
+### Run in background (keeps Mac awake)
 
 ```bash
-nohup slack-monitor > ~/.slack-monitor/monitor.log 2>&1 &
+nohup caffeinate -i ./slack-monitor > ~/.slack-monitor/monitor.log 2>&1 &
 ```
 
 Save the process ID:
 ```bash
 echo $! > ~/.slack-monitor/monitor.pid
 ```
+
+**Note**: Using `caffeinate -i` prevents your Mac from sleeping while the monitor runs. The display can still sleep to save power.
 
 ### Stop the monitor
 
@@ -194,6 +204,8 @@ Create `~/Library/LaunchAgents/com.user.slack-monitor.plist`:
     <string>com.user.slack-monitor</string>
     <key>ProgramArguments</key>
     <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
         <string>/Users/YOUR_USERNAME/bin/slack-monitor</string>
     </array>
     <key>RunAtLoad</key>
@@ -209,6 +221,8 @@ Create `~/Library/LaunchAgents/com.user.slack-monitor.plist`:
 ```
 
 **Replace `YOUR_USERNAME` with your actual username**.
+
+**Note**: This configuration uses `caffeinate -i` to keep your Mac awake while the monitor runs. The display can still sleep to save power.
 
 Load the service:
 ```bash

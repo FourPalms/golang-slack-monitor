@@ -6,7 +6,7 @@ help:
 	@echo "  make build         - Build the binary"
 	@echo "  make test          - Run unit tests"
 	@echo "  make test-message  - Test ntfy.sh notification (requires NTFY_TOPIC)"
-	@echo "  make run           - Run the monitor locally"
+	@echo "  make run           - Run the monitor locally (keeps Mac awake)"
 	@echo "  make install       - Install to ~/bin"
 	@echo "  make clean         - Clean build artifacts"
 
@@ -20,8 +20,9 @@ test:
 	go test -v -cover ./...
 
 run: build
-	@echo "Starting slack-monitor..."
-	./slack-monitor
+	@echo "Starting slack-monitor (keeping Mac awake)..."
+	@echo "Press Ctrl+C to stop"
+	caffeinate -i ./slack-monitor
 
 install: build
 	@echo "Installing to ~/bin..."
