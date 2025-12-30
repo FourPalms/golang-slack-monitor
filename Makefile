@@ -1,13 +1,14 @@
-.PHONY: help build test run install clean
+.PHONY: help build test run install clean test-message
 
 # Default target
 help:
 	@echo "Slack Monitor - Available targets:"
-	@echo "  make build    - Build the binary"
-	@echo "  make test     - Run tests"
-	@echo "  make run      - Run the monitor locally"
-	@echo "  make install  - Install to ~/bin"
-	@echo "  make clean    - Clean build artifacts"
+	@echo "  make build         - Build the binary"
+	@echo "  make test          - Run unit tests"
+	@echo "  make test-message  - Test ntfy.sh notification (requires NTFY_TOPIC)"
+	@echo "  make run           - Run the monitor locally"
+	@echo "  make install       - Install to ~/bin"
+	@echo "  make clean         - Clean build artifacts"
 
 build:
 	@echo "Building slack-monitor..."
@@ -32,3 +33,15 @@ clean:
 	@echo "Cleaning..."
 	go clean
 	@echo "Clean complete."
+
+test-message:
+	@echo "Testing ntfy.sh notification..."
+	@if [ -z "$(NTFY_TOPIC)" ]; then \
+		echo "Error: NTFY_TOPIC environment variable not set"; \
+		echo "Usage: NTFY_TOPIC=your-topic make test-message"; \
+		exit 1; \
+	fi
+	@echo "Sending test notification to ntfy.sh/$(NTFY_TOPIC)..."
+	@curl -d "Test notification from slack-monitor at $$(date '+%H:%M:%S')" https://ntfy.sh/$(NTFY_TOPIC)
+	@echo ""
+	@echo "Check your phone for the notification!"

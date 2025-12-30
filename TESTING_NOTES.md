@@ -8,14 +8,23 @@
 - Error handling paths ✅
 
 ## Unit Test Results
-All 5 unit tests pass:
+All 10 unit tests pass (5 original + 5 added in Phase 2):
+
+**Original Tests (Phase 1)**:
 - ✅ TestLoadConfig - Tests valid config, missing config, missing required fields
 - ✅ TestLoadSaveState - Tests first run (creates new state), save, reload
 - ✅ TestFormatMessage - Tests normal message, truncation at 100 chars, empty message
 - ✅ TestSlackClientCreation - Tests client initialization with tokens
 - ✅ TestNotificationServiceCreation - Tests notifier initialization
 
-Coverage: 20.6% of statements (appropriate for unit tests without HTTP mocking)
+**New Tests (Phase 2 - Hardening)**:
+- ✅ TestRateLimiting - Tests notification rate limiting (2-second minimum)
+- ✅ TestStateUpdateScenarios - Tests 6 state scenarios (first run, add, persist, reload, update, multiple)
+- ✅ TestMessageFiltering - Tests 4 message filtering cases (normal, own messages, empty user, non-message type)
+- ✅ TestConfigDefaults - Tests default values (poll interval, DMsOnly)
+- All existing tests enhanced with new validation
+
+Coverage: 20.2% of statements (appropriate for unit tests without HTTP mocking infrastructure)
 
 ## Manual Testing Checklist
 
@@ -97,3 +106,98 @@ None! The application works as designed.
 - Add web UI dashboard
 - Support multiple workspaces
 - Automatic token refresh with OAuth
+
+---
+
+## End-to-End Testing (Phase 2)
+
+### Test ntfy.sh Notifications
+
+**Quick Test** (without full monitor):
+```bash
+NTFY_TOPIC=your-topic make test-message
+```
+
+Expected: Test notification appears on your phone within seconds.
+
+### Full Integration Test Procedure
+
+**1. Setup Test Config**
+```bash
+cp test-config.json ~/.slack-monitor/config.json
+```
+
+**2. Extract Real Slack Tokens** (see README.md for detailed steps)
+- Open Slack in browser (bamboohr.slack.com or your workspace)
+- DevTools → Application → Cookies → d=xoxc-...
+- DevTools → Network → Headers → Authorization: Bearer xoxd-...
+- Paste tokens into ~/.slack-monitor/config.json
+
+**3. Set ntfy.sh Topic**
+- Install ntfy app on phone
+- Subscribe to a test topic (e.g., "test-slack-monitor-12345")
+- Update config.json with topic name
+
+**4. Run Monitor** (foreground for testing):
+```bash
+make run
+```
+
+Expected output:
+```
+Slack Monitor starting...
+Config loaded successfully (poll interval: 10s)
+State loaded successfully (X conversations tracked)
+Starting monitoring loop...
+Authenticated as your-name (U123456) in workspace YourWorkspace
+Checking for new messages...
+Checking X DM conversation(s)
+Check cycle complete
+```
+
+**5. Send Test DM**
+- Have someone DM you on Slack
+- OR: DM yourself from another device/account
+- Wait up to poll_interval_seconds (10s in test config)
+
+**6. Verify Notification**
+- Check phone for ntfy notification
+- Format: "DM from {name}: {message preview}"
+- Truncated to 100 chars if long
+
+**7. Test Own Messages Filter**
+- Send a DM to someone else from monitored account
+- Should NOT receive notification for your own sent message
+
+**8. Test Graceful Shutdown**
+```bash
+# In another terminal
+killall slack-monitor
+```
+
+Expected: Monitor logs "shutting down gracefully", saves state, exits cleanly
+
+**9. Test State Persistence**
+- Run monitor again
+- Should load existing state
+- Should only notify for NEW messages (not historical)
+
+### End-to-End Test Results
+
+**Status**: Not yet performed with real Slack credentials
+
+**To Perform Full Test**:
+1. Extract real Slack tokens (5 min one-time setup)
+2. Configure ntfy.sh topic
+3. Run above test procedure
+4. Validate all expected behaviors
+
+**Expected Pass Criteria**:
+- ✅ Authentication succeeds with real tokens
+- ✅ DM conversations listed correctly
+- ✅ New messages trigger phone notifications
+- ✅ Own messages are NOT notified
+- ✅ State persists across restarts
+- ✅ No duplicate notifications after restart
+- ✅ Graceful shutdown works
+- ✅ Error handling continues monitoring on failures

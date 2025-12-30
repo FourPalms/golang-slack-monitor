@@ -1,0 +1,14 @@
+{
+  "slack": {
+    "xoxc_token": "xoxc-PASTE-YOUR-TEST-TOKEN-HERE",
+    "xoxd_token": "xoxd-PASTE-YOUR-TEST-TOKEN-HERE",
+    "workspace_id": "T02BJJRF2",
+    "poll_interval_seconds": 10
+  },
+  "notifications": {
+    "ntfy_topic": "your-test-topic-here"
+  },
+  "monitor": {
+    "dms_only": true
+  }
+}
