@@ -763,13 +763,14 @@ slack-monitor/
 - [x] Converts API responses to domain types in each method
 
 **Step 22c: Extract notification service to `notification/` package**
-- [ ] Move notification code to `notification/service.go`:
+- [x] Move notification code to `notification/service.go`:
   - `Service` struct (implements `monitor.Notifier` interface)
-  - `sendNotification()` - Send to ntfy.sh
-  - `formatMessage()` - Format DM for notification
-  - Rate limiting logic
-- [ ] Service depends on `monitor.Message` type
-- [ ] Update tests
+  - `SendNotification()` - Send to ntfy.sh
+  - Rate limiting logic (2 seconds minimum between notifications)
+  - HTTP client with 10-second timeout
+  - ntfy.sh headers (Title, Priority)
+- [x] Service is completely independent - no dependencies on monitor package
+- [x] Clean, focused implementation (66 lines)
 
 **Step 22d: Extract state storage to `storage/` package**
 - [ ] Move state persistence to `storage/state.go`:
